@@ -1,8 +1,16 @@
 {
-  "name": "win-trace",
+  "name": "win-track",
   "version": "0.1.0",
   "description": "Native Windows active-window tracker with a sync-friendly API.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/monirsaikat/win-track.git"
+  },
+  "bugs": {
+    "url": "https://github.com/monirsaikat/win-track/issues"
+  },
+  "homepage": "https://github.com/monirsaikat/win-track#readme",
   "main": "index.js",
   "types": "index.d.ts",
   "type": "commonjs",

@@ -1,17 +1,17 @@
-# win-trace
+# win-track
 
 Track the active window on Windows with a sync-friendly API and native addon.
 
 ## Install
 
 ```bash
-npm install win-trace
+npm install win-track
 ```
 
 ## Usage
 
 ```js
-const { getActiveWindow } = require("win-trace");
+const { getActiveWindow } = require("win-track");
 
 const info = getActiveWindow();
 console.log({
@@ -29,7 +29,7 @@ console.log({
 For a one-off async fetch:
 
 ```js
-const { getActiveWindowAsync } = require("win-trace");
+const { getActiveWindowAsync } = require("win-track");
 
 async function run() {
   const info = await getActiveWindowAsync();
@@ -41,16 +41,11 @@ run();
 
 ## API
 
-- `configure({ intervalMs })` - Set the polling interval in milliseconds.
-- `startTracking({ intervalMs })` - Start background polling.
-- `stopTracking()` - Stop background polling.
-- `getActiveWindow()` - Get the last cached active window info.
+- `getActiveWindow()` - Fetch the active window info.
 - `getActiveWindowAsync()` - Fetch the active window once.
-- `getLastError()` - Return the last polling error, if any.
-- `onChange(listener)` - Subscribe to changes and get an unsubscribe function.
+- `getLastError()` - Return the last error from `getActiveWindow`, if any.
 
 ## Notes
 
 - Native Windows addon built with C++/N-API.
 - URL extraction uses Windows UI Automation and supports Chrome, Edge, Firefox, and Brave.
-# win-track
