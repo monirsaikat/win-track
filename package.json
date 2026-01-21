@@ -1,0 +1,36 @@
+{
+  "name": "win-trace",
+  "version": "0.1.0",
+  "description": "Native Windows active-window tracker with a sync-friendly API.",
+  "license": "MIT",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "win32"
+  ],
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE",
+    "binding.gyp",
+    "src/"
+  ],
+  "scripts": {
+    "install": "node-gyp rebuild"
+  },
+  "keywords": [
+    "active-window",
+    "windows",
+    "tracking",
+    "foreground-window"
+  ],
+  "dependencies": {
+    "node-addon-api": "^7.1.0",
+    "node-gyp-build": "^4.6.1"
+  }
+}
