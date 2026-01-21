@@ -17,9 +17,6 @@
   "engines": {
     "node": ">=16"
   },
-  "os": [
-    "win32"
-  ],
   "files": [
     "index.js",
     "index.d.ts",
@@ -29,7 +26,7 @@
     "src/"
   ],
   "scripts": {
-    "install": "node-gyp rebuild"
+    "install": "node -e \"if (process.platform === 'win32') { require('child_process').execSync('node-gyp rebuild', { stdio: 'inherit' }); }\""
   },
   "keywords": [
     "active-window",
@@ -38,6 +35,7 @@
     "foreground-window"
   ],
   "dependencies": {
+    "active-win": "^9.0.0",
     "node-addon-api": "^7.1.0",
     "node-gyp-build": "^4.6.1"
   }

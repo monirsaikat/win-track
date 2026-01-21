@@ -1,6 +1,6 @@
 # win-track
 
-Track the active window on Windows with a sync-friendly API and native addon.
+Track the active window on Windows, macOS, and Linux with a sync-friendly API on Windows.
 
 ## Install
 
@@ -47,5 +47,7 @@ run();
 
 ## Notes
 
-- Native Windows addon built with C++/N-API.
+- Windows uses a native addon built with C++/N-API.
+- macOS/Linux use `active-win` as a fallback.
 - URL extraction uses Windows UI Automation and supports Chrome, Edge, Firefox, and Brave.
+- On non-Windows platforms, `getActiveWindowAsync()` is the recommended path.
