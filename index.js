@@ -1,8 +1,11 @@
 "use strict";
 
 const isWindows = process.platform === "win32";
+const isMac = process.platform === "darwin";
+const isLinux = process.platform === "linux";
+const childProcess = require("child_process");
+const fs = require("fs");
 let binding = null;
-let activeWinModule = null;
 let lastError = null;
 
 function loadBinding() {
@@ -21,48 +24,36 @@ function loadBinding() {
   }
 }
 
-async function loadActiveWin() {
-  if (activeWinModule) {
-    return activeWinModule;
-  }
+function runCommandSync(command, args, options = {}) {
   try {
-    activeWinModule = require("active-win");
-    return activeWinModule;
+    return childProcess.execFileSync(command, args, {
+      encoding: "utf8",
+      timeout: 1500,
+      windowsHide: true,
+      ...options
+    }).trim();
   } catch (err) {
-    try {
-      activeWinModule = await import("active-win");
-      return activeWinModule;
-    } catch (importErr) {
-      lastError = importErr;
-      return null;
-    }
-  }
-}
-
-function resolveActiveWin(mod) {
-  if (!mod) {
+    lastError = err;
     return null;
   }
-  if (typeof mod === "function") {
-    return mod;
-  }
-  if (typeof mod.default === "function") {
-    return mod.default;
-  }
-  if (typeof mod.activeWin === "function") {
-    return mod.activeWin;
-  }
-  return null;
 }
 
-function resolveActiveWinSync(mod, activeWin) {
-  if (mod && typeof mod.sync === "function") {
-    return mod.sync;
-  }
-  if (activeWin && typeof activeWin.sync === "function") {
-    return activeWin.sync;
-  }
-  return null;
+function runCommandAsync(command, args, options = {}) {
+  return new Promise((resolve) => {
+    childProcess.execFile(
+      command,
+      args,
+      { encoding: "utf8", timeout: 1500, windowsHide: true, ...options },
+      (err, stdout) => {
+        if (err) {
+          lastError = err;
+          resolve(null);
+          return;
+        }
+        resolve(stdout.trim());
+      }
+    );
+  });
 }
 
 function toWebsite(url) {
@@ -85,6 +76,248 @@ function normalizeInfo(info) {
   return info;
 }
 
+function parseLinuxActiveWindowId(output) {
+  if (!output) {
+    return null;
+  }
+  const match = output.match(/0x[0-9a-fA-F]+/);
+  return match ? match[0] : null;
+}
+
+function parseLinuxXprop(output) {
+  if (!output) {
+    return {};
+  }
+  const info = {};
+  const titleMatch =
+    output.match(/_NET_WM_NAME\(\w+\)\s+=\s+"(.*)"/) ||
+    output.match(/WM_NAME\(\w+\)\s+=\s+"(.*)"/);
+  if (titleMatch) {
+    info.title = titleMatch[1];
+  }
+  const classMatch = output.match(/WM_CLASS\(\w+\)\s+=\s+"([^"]+)",\s+"([^"]+)"/);
+  if (classMatch) {
+    info.appName = classMatch[2] || classMatch[1];
+    info.ownerName = classMatch[2] || classMatch[1];
+  }
+  const pidMatch = output.match(/_NET_WM_PID\(\w+\)\s+=\s+(\d+)/);
+  if (pidMatch) {
+    info.processId = Number(pidMatch[1]);
+  }
+  return info;
+}
+
+function readLinuxBounds(windowId) {
+  const output = runCommandSync("xwininfo", ["-id", windowId]);
+  if (!output) {
+    return undefined;
+  }
+  const xMatch = output.match(/Absolute upper-left X:\s+(-?\d+)/);
+  const yMatch = output.match(/Absolute upper-left Y:\s+(-?\d+)/);
+  const wMatch = output.match(/Width:\s+(\d+)/);
+  const hMatch = output.match(/Height:\s+(\d+)/);
+  if (!xMatch || !yMatch || !wMatch || !hMatch) {
+    return undefined;
+  }
+  return {
+    x: Number(xMatch[1]),
+    y: Number(yMatch[1]),
+    width: Number(wMatch[1]),
+    height: Number(hMatch[1])
+  };
+}
+
+function readLinuxProcessPath(processId) {
+  if (!processId) {
+    return undefined;
+  }
+  try {
+    return fs.readlinkSync(`/proc/${processId}/exe`);
+  } catch (err) {
+    lastError = err;
+    return undefined;
+  }
+}
+
+function readLinuxActiveWindowSync() {
+  const activeOutput = runCommandSync("xprop", ["-root", "_NET_ACTIVE_WINDOW"]);
+  const windowId = parseLinuxActiveWindowId(activeOutput);
+  if (!windowId || windowId === "0x0") {
+    return null;
+  }
+  const details = runCommandSync("xprop", [
+    "-id",
+    windowId,
+    "_NET_WM_NAME",
+    "WM_NAME",
+    "WM_CLASS",
+    "_NET_WM_PID"
+  ]);
+  const parsed = parseLinuxXprop(details);
+  const bounds = readLinuxBounds(windowId);
+  const path = readLinuxProcessPath(parsed.processId);
+  return normalizeInfo({
+    appName: parsed.appName,
+    title: parsed.title,
+    id: windowId,
+    bounds,
+    owner: {
+      name: parsed.ownerName || parsed.appName,
+      path,
+      processId: parsed.processId
+    },
+    url: undefined,
+    website: undefined
+  });
+}
+
+async function readLinuxActiveWindowAsync() {
+  const activeOutput = await runCommandAsync("xprop", [
+    "-root",
+    "_NET_ACTIVE_WINDOW"
+  ]);
+  const windowId = parseLinuxActiveWindowId(activeOutput);
+  if (!windowId || windowId === "0x0") {
+    return null;
+  }
+  const details = await runCommandAsync("xprop", [
+    "-id",
+    windowId,
+    "_NET_WM_NAME",
+    "WM_NAME",
+    "WM_CLASS",
+    "_NET_WM_PID"
+  ]);
+  const parsed = parseLinuxXprop(details);
+  const bounds = readLinuxBounds(windowId);
+  const path = readLinuxProcessPath(parsed.processId);
+  return normalizeInfo({
+    appName: parsed.appName,
+    title: parsed.title,
+    id: windowId,
+    bounds,
+    owner: {
+      name: parsed.ownerName || parsed.appName,
+      path,
+      processId: parsed.processId
+    },
+    url: undefined,
+    website: undefined
+  });
+}
+
+function parseMacLines(output) {
+  if (!output) {
+    return {};
+  }
+  const lines = output.split(/\r?\n/);
+  const info = {};
+  for (const line of lines) {
+    const [key, ...rest] = line.split(":");
+    const value = rest.join(":").trim();
+    if (key === "app") {
+      info.appName = value || undefined;
+    } else if (key === "title") {
+      info.title = value || undefined;
+    } else if (key === "pid") {
+      info.processId = Number(value);
+    } else if (key === "bounds") {
+      const parts = value.split(",").map((part) => Number(part.trim()));
+      if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
+        info.bounds = {
+          x: parts[0],
+          y: parts[1],
+          width: parts[2],
+          height: parts[3]
+        };
+      }
+    }
+  }
+  return info;
+}
+
+function readMacProcessPath(processId) {
+  if (!processId) {
+    return undefined;
+  }
+  const output = runCommandSync("ps", ["-p", String(processId), "-o", "command="]);
+  if (!output) {
+    return undefined;
+  }
+  const parts = output.split(" ");
+  return parts[0] || undefined;
+}
+
+function readMacActiveWindowSync() {
+  const script = [
+    'tell application "System Events"',
+    'set frontApp to first application process whose frontmost is true',
+    'set appName to name of frontApp',
+    'set appPid to unix id of frontApp',
+    'set windowTitle to ""',
+    'set boundsInfo to ""',
+    'try',
+    'set windowTitle to name of front window of frontApp',
+    'set {xPos, yPos} to position of front window of frontApp',
+    'set {wSize, hSize} to size of front window of frontApp',
+    'set boundsInfo to (xPos as text) & "," & (yPos as text) & "," & (wSize as text) & "," & (hSize as text)',
+    'end try',
+    'return "app:" & appName & "\n" & "title:" & windowTitle & "\n" & "pid:" & appPid & "\n" & "bounds:" & boundsInfo',
+    "end tell"
+  ].join("\n");
+  const output = runCommandSync("osascript", ["-e", script]);
+  const parsed = parseMacLines(output);
+  const path = readMacProcessPath(parsed.processId);
+  return normalizeInfo({
+    appName: parsed.appName,
+    title: parsed.title,
+    id: parsed.processId ? String(parsed.processId) : undefined,
+    bounds: parsed.bounds,
+    owner: {
+      name: parsed.appName,
+      path,
+      processId: parsed.processId
+    },
+    url: undefined,
+    website: undefined
+  });
+}
+
+async function readMacActiveWindowAsync() {
+  const script = [
+    'tell application "System Events"',
+    'set frontApp to first application process whose frontmost is true',
+    'set appName to name of frontApp',
+    'set appPid to unix id of frontApp',
+    'set windowTitle to ""',
+    'set boundsInfo to ""',
+    'try',
+    'set windowTitle to name of front window of frontApp',
+    'set {xPos, yPos} to position of front window of frontApp',
+    'set {wSize, hSize} to size of front window of frontApp',
+    'set boundsInfo to (xPos as text) & "," & (yPos as text) & "," & (wSize as text) & "," & (hSize as text)',
+    'end try',
+    'return "app:" & appName & "\n" & "title:" & windowTitle & "\n" & "pid:" & appPid & "\n" & "bounds:" & boundsInfo',
+    "end tell"
+  ].join("\n");
+  const output = await runCommandAsync("osascript", ["-e", script]);
+  const parsed = parseMacLines(output);
+  const path = readMacProcessPath(parsed.processId);
+  return normalizeInfo({
+    appName: parsed.appName,
+    title: parsed.title,
+    id: parsed.processId ? String(parsed.processId) : undefined,
+    bounds: parsed.bounds,
+    owner: {
+      name: parsed.appName,
+      path,
+      processId: parsed.processId
+    },
+    url: undefined,
+    website: undefined
+  });
+}
+
 function fetchActiveWindowSync() {
   const native = loadBinding();
   if (native) {
@@ -98,38 +331,14 @@ function fetchActiveWindowSync() {
     }
   }
 
-  if (!activeWinModule) {
-    try {
-      activeWinModule = require("active-win");
-    } catch (err) {
-      lastError = err;
-    }
+  if (isLinux) {
+    return readLinuxActiveWindowSync();
   }
-
-  if (!activeWinModule) {
-    lastError = new Error(
-      "Active window sync is not available yet on this platform. Use getActiveWindowAsync()."
-    );
-    return null;
+  if (isMac) {
+    return readMacActiveWindowSync();
   }
-
-  const activeWin = resolveActiveWin(activeWinModule);
-  const activeWinSync = resolveActiveWinSync(activeWinModule, activeWin);
-  if (!activeWinSync) {
-    lastError = new Error(
-      "Active window sync is not supported by the current platform module. Use getActiveWindowAsync()."
-    );
-    return null;
-  }
-
-  try {
-    const info = activeWinSync();
-    lastError = null;
-    return normalizeInfo(info);
-  } catch (err) {
-    lastError = err;
-    return null;
-  }
+  lastError = new Error("Active window is not supported on this platform.");
+  return null;
 }
 
 async function fetchActiveWindowAsync() {
@@ -145,23 +354,14 @@ async function fetchActiveWindowAsync() {
     }
   }
 
-  const mod = await loadActiveWin();
-  const activeWin = resolveActiveWin(mod);
-  if (!activeWin) {
-    lastError =
-      lastError ||
-      new Error("Active window module is unavailable on this platform.");
-    return null;
+  if (isLinux) {
+    return readLinuxActiveWindowAsync();
   }
-
-  try {
-    const info = await activeWin();
-    lastError = null;
-    return normalizeInfo(info);
-  } catch (err) {
-    lastError = err;
-    return null;
+  if (isMac) {
+    return readMacActiveWindowAsync();
   }
+  lastError = new Error("Active window is not supported on this platform.");
+  return null;
 }
 
 function getActiveWindow() {

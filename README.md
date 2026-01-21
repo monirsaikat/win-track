@@ -48,6 +48,6 @@ run();
 ## Notes
 
 - Windows uses a native addon built with C++/N-API.
-- macOS/Linux use `active-win` as a fallback.
+- Linux (X11) uses `xprop` and `xwininfo` for active window metadata.
+- macOS uses AppleScript (`osascript`) for the frontmost app/window.
 - URL extraction uses Windows UI Automation and supports Chrome, Edge, Firefox, and Brave.
-- On non-Windows platforms, `getActiveWindowAsync()` is the recommended path.
