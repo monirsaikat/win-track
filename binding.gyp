@@ -27,7 +27,26 @@
         "VCCLCompilerTool": {
           "ExceptionHandling": 1
         }
-      }
+      },
+      "conditions": [
+        [
+          "OS!=\"win\"",
+          {
+            "sources!": [
+              "src/addon.cc"
+            ],
+            "sources": [
+              "src/addon_stub.cc"
+            ],
+            "libraries!": [
+              "Psapi.lib",
+              "Uiautomationcore.lib",
+              "Ole32.lib",
+              "Version.lib"
+            ]
+          }
+        ]
+      ]
     }
   ]
 }
