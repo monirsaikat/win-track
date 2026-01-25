@@ -70,13 +70,15 @@ function toWebsite(url) {
 }
 
 const MAC_BROWSER_URL_SCRIPTS = {
-  "Google Chrome":
+  "google chrome":
     'tell application "Google Chrome" to get URL of active tab of front window',
-  "Brave Browser":
+  "brave browser":
     'tell application "Brave Browser" to get URL of active tab of front window',
-  "Microsoft Edge":
+  "microsoft edge":
     'tell application "Microsoft Edge" to get URL of active tab of front window',
-  Safari: 'tell application "Safari" to get URL of current tab of front window'
+  safari: 'tell application "Safari" to get URL of current tab of front window',
+  firefox:
+    'tell application "System Events" to tell process "Firefox" to get value of attribute "AXDocument" of front window'
 };
 
 function normalizeMacUrl(output) {
@@ -90,8 +92,15 @@ function normalizeMacUrl(output) {
   return value;
 }
 
+function normalizeMacAppName(appName) {
+  if (!appName) {
+    return "";
+  }
+  return appName.trim().toLowerCase();
+}
+
 function readMacBrowserUrlSync(appName) {
-  const script = MAC_BROWSER_URL_SCRIPTS[appName];
+  const script = MAC_BROWSER_URL_SCRIPTS[normalizeMacAppName(appName)];
   if (!script) {
     return undefined;
   }
@@ -100,7 +109,7 @@ function readMacBrowserUrlSync(appName) {
 }
 
 async function readMacBrowserUrlAsync(appName) {
-  const script = MAC_BROWSER_URL_SCRIPTS[appName];
+  const script = MAC_BROWSER_URL_SCRIPTS[normalizeMacAppName(appName)];
   if (!script) {
     return undefined;
   }
