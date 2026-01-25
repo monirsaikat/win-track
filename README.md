@@ -51,4 +51,4 @@ run();
 - Linux (X11) uses `xprop` and `xwininfo` for active window metadata.
 - macOS uses AppleScript (`osascript`) for the frontmost app/window.
 - URL extraction uses Windows UI Automation and supports Chrome, Edge, Firefox, and Brave.
-- macOS URL extraction uses AppleScript for Safari, Chrome, Edge, Brave, and Firefox; you may need to grant Automation or Accessibility permissions to your terminal or Node process.
+- macOS URL extraction uses AppleScript for Safari, Chrome, Edge, Brave, and Firefox; Firefox falls back to a clipboard-based method, so grant Accessibility permissions and expect the clipboard to be temporarily used.

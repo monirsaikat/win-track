@@ -76,10 +76,46 @@ const MAC_BROWSER_URL_SCRIPTS = {
     'tell application "Brave Browser" to get URL of active tab of front window',
   "microsoft edge":
     'tell application "Microsoft Edge" to get URL of active tab of front window',
-  safari: 'tell application "Safari" to get URL of current tab of front window',
-  firefox:
-    'tell application "System Events" to tell process "Firefox" to get value of attribute "AXDocument" of front window'
+  safari: 'tell application "Safari" to get URL of current tab of front window'
 };
+
+const MAC_FIREFOX_AX_SCRIPT = [
+  'tell application "System Events"',
+  'if not (exists process "Firefox") then return ""',
+  'tell process "Firefox"',
+  'if (count of windows) = 0 then return ""',
+  'try',
+  'set docUrl to value of attribute "AXDocument" of front window',
+  'if docUrl is not missing value then return docUrl as text',
+  "end try",
+  "end tell",
+  "end tell",
+  'return ""'
+].join("\n");
+
+const MAC_FIREFOX_CLIPBOARD_SCRIPT = [
+  'tell application "System Events"',
+  'if not (exists process "Firefox") then return ""',
+  'tell process "Firefox"',
+  'if (count of windows) = 0 then return ""',
+  'set oldClipboard to the clipboard',
+  'try',
+  'keystroke "l" using command down',
+  "delay 0.08",
+  'keystroke "c" using command down',
+  "delay 0.08",
+  'set newClipboard to the clipboard',
+  'set the clipboard to oldClipboard',
+  'return newClipboard as text',
+  "on error",
+  'try',
+  'set the clipboard to oldClipboard',
+  "end try",
+  'return ""',
+  "end try",
+  "end tell",
+  "end tell"
+].join("\n");
 
 function normalizeMacUrl(output) {
   if (!output) {
@@ -100,7 +136,20 @@ function normalizeMacAppName(appName) {
 }
 
 function readMacBrowserUrlSync(appName) {
-  const script = MAC_BROWSER_URL_SCRIPTS[normalizeMacAppName(appName)];
+  const normalized = normalizeMacAppName(appName);
+  if (normalized === "firefox") {
+    let url = normalizeMacUrl(
+      runCommandSync("osascript", ["-e", MAC_FIREFOX_AX_SCRIPT])
+    );
+    if (url) {
+      return url;
+    }
+    url = normalizeMacUrl(
+      runCommandSync("osascript", ["-e", MAC_FIREFOX_CLIPBOARD_SCRIPT])
+    );
+    return url;
+  }
+  const script = MAC_BROWSER_URL_SCRIPTS[normalized];
   if (!script) {
     return undefined;
   }
@@ -109,7 +158,20 @@ function readMacBrowserUrlSync(appName) {
 }
 
 async function readMacBrowserUrlAsync(appName) {
-  const script = MAC_BROWSER_URL_SCRIPTS[normalizeMacAppName(appName)];
+  const normalized = normalizeMacAppName(appName);
+  if (normalized === "firefox") {
+    let url = normalizeMacUrl(
+      await runCommandAsync("osascript", ["-e", MAC_FIREFOX_AX_SCRIPT])
+    );
+    if (url) {
+      return url;
+    }
+    url = normalizeMacUrl(
+      await runCommandAsync("osascript", ["-e", MAC_FIREFOX_CLIPBOARD_SCRIPT])
+    );
+    return url;
+  }
+  const script = MAC_BROWSER_URL_SCRIPTS[normalized];
   if (!script) {
     return undefined;
   }
