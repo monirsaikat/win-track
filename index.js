@@ -69,6 +69,45 @@ function toWebsite(url) {
   }
 }
 
+const MAC_BROWSER_URL_SCRIPTS = {
+  "Google Chrome":
+    'tell application "Google Chrome" to get URL of active tab of front window',
+  "Brave Browser":
+    'tell application "Brave Browser" to get URL of active tab of front window',
+  "Microsoft Edge":
+    'tell application "Microsoft Edge" to get URL of active tab of front window',
+  Safari: 'tell application "Safari" to get URL of current tab of front window'
+};
+
+function normalizeMacUrl(output) {
+  if (!output) {
+    return undefined;
+  }
+  const value = output.trim();
+  if (!value || value === "missing value") {
+    return undefined;
+  }
+  return value;
+}
+
+function readMacBrowserUrlSync(appName) {
+  const script = MAC_BROWSER_URL_SCRIPTS[appName];
+  if (!script) {
+    return undefined;
+  }
+  const output = runCommandSync("osascript", ["-e", script]);
+  return normalizeMacUrl(output);
+}
+
+async function readMacBrowserUrlAsync(appName) {
+  const script = MAC_BROWSER_URL_SCRIPTS[appName];
+  if (!script) {
+    return undefined;
+  }
+  const output = await runCommandAsync("osascript", ["-e", script]);
+  return normalizeMacUrl(output);
+}
+
 function normalizeInfo(info) {
   if (info && info.url && !info.website) {
     info.website = toWebsite(info.url);
@@ -268,6 +307,7 @@ function readMacActiveWindowSync() {
   const output = runCommandSync("osascript", ["-e", script]);
   const parsed = parseMacLines(output);
   const path = readMacProcessPath(parsed.processId);
+  const url = readMacBrowserUrlSync(parsed.appName);
   return normalizeInfo({
     appName: parsed.appName,
     title: parsed.title,
@@ -278,7 +318,7 @@ function readMacActiveWindowSync() {
       path,
       processId: parsed.processId
     },
-    url: undefined,
+    url,
     website: undefined
   });
 }
@@ -303,6 +343,7 @@ async function readMacActiveWindowAsync() {
   const output = await runCommandAsync("osascript", ["-e", script]);
   const parsed = parseMacLines(output);
   const path = readMacProcessPath(parsed.processId);
+  const url = await readMacBrowserUrlAsync(parsed.appName);
   return normalizeInfo({
     appName: parsed.appName,
     title: parsed.title,
@@ -313,7 +354,7 @@ async function readMacActiveWindowAsync() {
       path,
       processId: parsed.processId
     },
-    url: undefined,
+    url,
     website: undefined
   });
 }
