@@ -120,6 +120,21 @@ std::wstring ToLower(const std::wstring &input) {
   return output;
 }
 
+std::wstring RemoveInvisibleChars(const std::wstring &input) {
+  std::wstring output;
+  output.reserve(input.size());
+  for (wchar_t c : input) {
+    if (c == static_cast<wchar_t>(0x200B)
+        || c == static_cast<wchar_t>(0x200C)
+        || c == static_cast<wchar_t>(0x200D)
+        || c == static_cast<wchar_t>(0xFEFF)) {
+      continue;
+    }
+    output.push_back(c);
+  }
+  return output;
+}
+
 std::wstring Trim(const std::wstring &input) {
   size_t start = 0;
   while (start < input.size() && iswspace(input[start])) {
@@ -130,6 +145,31 @@ std::wstring Trim(const std::wstring &input) {
     --end;
   }
   return input.substr(start, end - start);
+}
+
+std::wstring StripSurroundingPunctuation(const std::wstring &input) {
+  std::wstring value = Trim(input);
+  while (!value.empty()) {
+    wchar_t front = value.front();
+    wchar_t back = value.back();
+    bool trimFront = front == L'[' || front == L'(' || front == L'{' || front == L'<';
+    bool trimBack = back == L']' || back == L')' || back == L'}' || back == L'>';
+    if (!trimFront && !trimBack) {
+      break;
+    }
+    if (trimFront) {
+      value.erase(value.begin());
+    }
+    if (trimBack && !value.empty()) {
+      value.pop_back();
+    }
+    value = Trim(value);
+  }
+  return value;
+}
+
+std::wstring NormalizeToken(const std::wstring &input) {
+  return ToLower(StripSurroundingPunctuation(RemoveInvisibleChars(input)));
 }
 
 bool StartsWith(const std::wstring &value, const std::wstring &prefix) {
@@ -153,6 +193,27 @@ bool ContainsDigit(const std::wstring &value) {
     }
   }
   return false;
+}
+
+size_t SkipWhitespace(const std::wstring &value, size_t pos) {
+  while (pos < value.size() && iswspace(value[pos])) {
+    ++pos;
+  }
+  return pos;
+}
+
+bool MatchWordInsensitive(const std::wstring &value,
+                          size_t pos,
+                          const std::wstring &word) {
+  if (pos + word.size() > value.size()) {
+    return false;
+  }
+  for (size_t i = 0; i < word.size(); ++i) {
+    if (towlower(value[pos + i]) != word[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool IsDashSeparatorAt(const std::wstring &value, size_t pos) {
@@ -217,7 +278,7 @@ bool IsSupportedBrowser(const std::wstring &exeName) {
 }
 
 std::wstring NormalizeExecutableName(const std::wstring &name) {
-  std::wstring lower = ToLower(Trim(name));
+  std::wstring lower = NormalizeToken(name);
   if (EndsWith(lower, L".exe")) {
     lower = lower.substr(0, lower.size() - 4);
   }
@@ -240,6 +301,9 @@ bool IsProfileSegment(const std::wstring &lower) {
   if (lower == L"default") {
     return true;
   }
+  if (lower == L"in private") {
+    return true;
+  }
   if (lower == L"guest" || lower == L"incognito" || lower == L"inprivate") {
     return true;
   }
@@ -260,30 +324,42 @@ bool IsMultiTabSummarySegment(const std::wstring &lower) {
 }
 
 std::wstring RemoveMultiTabSummaryFromTitle(const std::wstring &value) {
-  std::wstring lower = ToLower(value);
-  const std::wstring andToken = L" and ";
-  for (size_t i = 0; i + andToken.size() < lower.size(); ++i) {
-    if (lower.compare(i, andToken.size(), andToken) != 0) {
+  for (size_t i = 0; i + 3 < value.size(); ++i) {
+    if (!MatchWordInsensitive(value, i, L"and")) {
       continue;
     }
-    size_t j = i + andToken.size();
-    if (j >= lower.size() || !iswdigit(lower[j])) {
+    if (i > 0 && !iswspace(value[i - 1])) {
       continue;
     }
-    while (j < lower.size() && iswdigit(lower[j])) {
+    size_t j = i + 3;
+    if (j >= value.size() || !iswspace(value[j])) {
+      continue;
+    }
+    j = SkipWhitespace(value, j);
+    if (j >= value.size() || !iswdigit(value[j])) {
+      continue;
+    }
+    while (j < value.size() && iswdigit(value[j])) {
       ++j;
     }
-    if (j >= lower.size()) {
+    j = SkipWhitespace(value, j);
+    if (!MatchWordInsensitive(value, j, L"more")) {
       continue;
     }
-    if (lower.compare(j, 10, L" more tab") == 0) {
-      j += 10;
-    } else if (lower.compare(j, 11, L" more page") == 0) {
-      j += 11;
-    } else {
+    j += 4;
+    j = SkipWhitespace(value, j);
+    bool matched = false;
+    if (MatchWordInsensitive(value, j, L"page")) {
+      j += 4;
+      matched = true;
+    } else if (MatchWordInsensitive(value, j, L"tab")) {
+      j += 3;
+      matched = true;
+    }
+    if (!matched) {
       continue;
     }
-    if (j < lower.size() && lower[j] == L's') {
+    if (j < value.size() && (value[j] == L's' || value[j] == L'S')) {
       ++j;
     }
     return Trim(value.substr(0, i));
@@ -295,12 +371,12 @@ bool IsRemovableTitleSuffix(const std::wstring &segment,
                             const std::wstring &appName,
                             const std::wstring &exeName,
                             bool isBrowser) {
-  std::wstring lower = ToLower(Trim(segment));
+  std::wstring lower = NormalizeToken(segment);
   if (lower.empty()) {
     return false;
   }
 
-  std::wstring appLower = ToLower(Trim(appName));
+  std::wstring appLower = NormalizeToken(appName);
   if (!appLower.empty() && lower == appLower) {
     return true;
   }
