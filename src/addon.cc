@@ -139,6 +139,50 @@ bool StartsWith(const std::wstring &value, const std::wstring &prefix) {
   return std::equal(prefix.begin(), prefix.end(), value.begin());
 }
 
+bool EndsWith(const std::wstring &value, const std::wstring &suffix) {
+  if (value.size() < suffix.size()) {
+    return false;
+  }
+  return std::equal(suffix.rbegin(), suffix.rend(), value.rbegin());
+}
+
+bool ContainsDigit(const std::wstring &value) {
+  for (wchar_t c : value) {
+    if (iswdigit(c)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsDashSeparatorAt(const std::wstring &value, size_t pos) {
+  if (pos + 2 >= value.size()) {
+    return false;
+  }
+  if (value[pos] != L' ' || value[pos + 2] != L' ') {
+    return false;
+  }
+  wchar_t mid = value[pos + 1];
+  return mid == L'-' || mid == static_cast<wchar_t>(0x2013)
+         || mid == static_cast<wchar_t>(0x2014);
+}
+
+bool FindLastTitleSeparator(const std::wstring &value, size_t *posOut) {
+  if (!posOut || value.size() < 3) {
+    return false;
+  }
+  for (size_t i = value.size() - 3; i < value.size(); --i) {
+    if (IsDashSeparatorAt(value, i)) {
+      *posOut = i;
+      return true;
+    }
+    if (i == 0) {
+      break;
+    }
+  }
+  return false;
+}
+
 bool IsLikelyUrl(const std::wstring &value) {
   std::wstring trimmed = Trim(value);
   if (trimmed.empty()) {
@@ -170,6 +214,152 @@ bool IsSupportedBrowser(const std::wstring &exeName) {
   std::wstring lower = ToLower(exeName);
   return lower == L"chrome.exe" || lower == L"msedge.exe"
          || lower == L"firefox.exe" || lower == L"brave.exe";
+}
+
+std::wstring NormalizeExecutableName(const std::wstring &name) {
+  std::wstring lower = ToLower(Trim(name));
+  if (EndsWith(lower, L".exe")) {
+    lower = lower.substr(0, lower.size() - 4);
+  }
+  return lower;
+}
+
+bool IsProfileSegment(const std::wstring &lower) {
+  if (lower == L"profile") {
+    return true;
+  }
+  if (StartsWith(lower, L"profile ")) {
+    return true;
+  }
+  if (StartsWith(lower, L"person ")) {
+    return true;
+  }
+  if (lower == L"personal") {
+    return true;
+  }
+  if (lower == L"default") {
+    return true;
+  }
+  if (lower == L"guest" || lower == L"incognito" || lower == L"inprivate") {
+    return true;
+  }
+  return false;
+}
+
+bool IsMultiTabSummarySegment(const std::wstring &lower) {
+  if (!ContainsDigit(lower)) {
+    return false;
+  }
+  if (lower.find(L"more page") != std::wstring::npos) {
+    return true;
+  }
+  if (lower.find(L"more tab") != std::wstring::npos) {
+    return true;
+  }
+  return false;
+}
+
+std::wstring RemoveMultiTabSummaryFromTitle(const std::wstring &value) {
+  std::wstring lower = ToLower(value);
+  const std::wstring andToken = L" and ";
+  for (size_t i = 0; i + andToken.size() < lower.size(); ++i) {
+    if (lower.compare(i, andToken.size(), andToken) != 0) {
+      continue;
+    }
+    size_t j = i + andToken.size();
+    if (j >= lower.size() || !iswdigit(lower[j])) {
+      continue;
+    }
+    while (j < lower.size() && iswdigit(lower[j])) {
+      ++j;
+    }
+    if (j >= lower.size()) {
+      continue;
+    }
+    if (lower.compare(j, 10, L" more tab") == 0) {
+      j += 10;
+    } else if (lower.compare(j, 11, L" more page") == 0) {
+      j += 11;
+    } else {
+      continue;
+    }
+    if (j < lower.size() && lower[j] == L's') {
+      ++j;
+    }
+    return Trim(value.substr(0, i));
+  }
+  return value;
+}
+
+bool IsRemovableTitleSuffix(const std::wstring &segment,
+                            const std::wstring &appName,
+                            const std::wstring &exeName,
+                            bool isBrowser) {
+  std::wstring lower = ToLower(Trim(segment));
+  if (lower.empty()) {
+    return false;
+  }
+
+  std::wstring appLower = ToLower(Trim(appName));
+  if (!appLower.empty() && lower == appLower) {
+    return true;
+  }
+
+  std::wstring exeLower = NormalizeExecutableName(exeName);
+  if (!exeLower.empty() && lower == exeLower) {
+    return true;
+  }
+
+  if (!isBrowser) {
+    return false;
+  }
+
+  if (IsProfileSegment(lower) || IsMultiTabSummarySegment(lower)) {
+    return true;
+  }
+
+  if (lower == L"microsoft edge" || lower == L"google chrome"
+      || lower == L"brave" || lower == L"brave browser"
+      || lower == L"mozilla firefox" || lower == L"firefox") {
+    return true;
+  }
+
+  return false;
+}
+
+std::wstring NormalizeWindowTitle(const std::wstring &title,
+                                  const std::wstring &appName,
+                                  const std::wstring &exeName) {
+  std::wstring value = Trim(title);
+  if (value.empty()) {
+    return value;
+  }
+
+  bool isBrowser = IsSupportedBrowser(exeName);
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    size_t pos = 0;
+    if (!FindLastTitleSeparator(value, &pos)) {
+      break;
+    }
+    std::wstring suffix = value.substr(pos + 3);
+    if (!IsRemovableTitleSuffix(suffix, appName, exeName, isBrowser)) {
+      break;
+    }
+    std::wstring prefix = Trim(value.substr(0, pos));
+    if (prefix.empty()) {
+      break;
+    }
+    value = prefix;
+    changed = true;
+  }
+
+  if (isBrowser) {
+    value = RemoveMultiTabSummaryFromTitle(value);
+  }
+
+  return value;
 }
 
 bool IsTopArea(const RECT &rect, const RECT &windowRect) {
@@ -370,11 +560,12 @@ Napi::Value GetActiveWindowWrapped(const Napi::CallbackInfo &info) {
 
   Napi::Object result = Napi::Object::New(env);
   std::wstring appNameValue = appName.empty() ? name : appName;
+  std::wstring titleValue = NormalizeWindowTitle(title, appNameValue, name);
   if (!appNameValue.empty()) {
     result.Set("appName", Napi::String::New(env, WideToUtf8(appNameValue)));
   }
-  if (!title.empty()) {
-    result.Set("title", Napi::String::New(env, WideToUtf8(title)));
+  if (!titleValue.empty()) {
+    result.Set("title", Napi::String::New(env, WideToUtf8(titleValue)));
   }
   result.Set("id", Napi::String::New(env, std::to_string(
                        reinterpret_cast<uintptr_t>(hwnd))));
