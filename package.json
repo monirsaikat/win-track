@@ -1,8 +1,9 @@
 {
   "name": "win-track",
-  "version": "0.1.0",
-  "description": "Native Windows active-window tracker with a sync-friendly API.",
+  "version": "0.1.1",
+  "description": "Get the active window and current browser tab URL in Node.js — native (N-API) for Windows, macOS & Linux. Ideal for time-tracking, productivity and activity-monitoring apps.",
   "license": "MIT",
+  "author": "monirsaikat (https://github.com/monirsaikat)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/monirsaikat/win-track.git"
@@ -30,9 +31,34 @@
   },
   "keywords": [
     "active-window",
+    "active-win",
+    "get-active-window",
+    "foreground-window",
+    "focused-window",
+    "current-window",
+    "active-app",
+    "window-tracker",
+    "window-title",
+    "browser-url",
+    "active-tab-url",
+    "current-url",
+    "url-tracking",
+    "browser-tracking",
+    "tab-url",
+    "time-tracking",
+    "activity-tracking",
+    "activity-monitoring",
+    "screen-time",
+    "productivity",
     "windows",
-    "tracking",
-    "foreground-window"
+    "macos",
+    "linux",
+    "electron",
+    "native",
+    "n-api",
+    "node-api",
+    "napi",
+    "uiautomation"
   ],
   "dependencies": {
     "node-addon-api": "^7.1.0",
