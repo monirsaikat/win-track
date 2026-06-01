@@ -273,8 +273,13 @@ bool IsLikelyUrl(const std::wstring &value) {
 
 bool IsSupportedBrowser(const std::wstring &exeName) {
   std::wstring lower = ToLower(exeName);
+  // All Chromium-based browsers expose the omnibox as an Edit/ComboBox control
+  // via UI Automation, so the same address-bar extraction in ReadBrowserUrl
+  // works for them. opera.exe covers both Opera and Opera GX; firefox.exe also
+  // covers the Tor Browser (built on Firefox ESR).
   return lower == L"chrome.exe" || lower == L"msedge.exe"
-         || lower == L"firefox.exe" || lower == L"brave.exe";
+         || lower == L"firefox.exe" || lower == L"brave.exe"
+         || lower == L"opera.exe" || lower == L"vivaldi.exe";
 }
 
 std::wstring NormalizeExecutableName(const std::wstring &name) {
@@ -396,7 +401,9 @@ bool IsRemovableTitleSuffix(const std::wstring &segment,
 
   if (lower == L"microsoft edge" || lower == L"google chrome"
       || lower == L"brave" || lower == L"brave browser"
-      || lower == L"mozilla firefox" || lower == L"firefox") {
+      || lower == L"mozilla firefox" || lower == L"firefox"
+      || lower == L"opera" || lower == L"opera gx"
+      || lower == L"opera internet browser" || lower == L"vivaldi") {
     return true;
   }
 

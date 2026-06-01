@@ -76,6 +76,16 @@ const MAC_BROWSER_URL_SCRIPTS = {
     'tell application "Brave Browser" to get URL of active tab of front window',
   "microsoft edge":
     'tell application "Microsoft Edge" to get URL of active tab of front window',
+  // Vivaldi ships Chromium's scripting dictionary, so the Chrome-style command
+  // works. Opera/Opera GX expose it inconsistently across versions — the call
+  // is best-effort and simply yields no URL (not an error to the user) when the
+  // running build doesn't support AppleScript.
+  vivaldi:
+    'tell application "Vivaldi" to get URL of active tab of front window',
+  opera:
+    'tell application "Opera" to get URL of active tab of front window',
+  "opera gx":
+    'tell application "Opera GX" to get URL of active tab of front window',
   safari: 'tell application "Safari" to get URL of current tab of front window'
 };
 
