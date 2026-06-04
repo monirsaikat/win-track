@@ -1,0 +1,41 @@
+name: Publish to npm
+
+# Keeps the npm package in sync with GitHub: on every push to main, this
+# publishes win-track **only if** the version in package.json isn't already on
+# npm. So the workflow is always safe to run —
+#   • bump the version (e.g. `npm version patch`) + push  → a new version ships
+#   • push without a version bump                         → it skips gracefully
+#
+# Requires one repo secret: NPM_TOKEN (an npm "Automation" access token).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish if this version isn't on npm yet
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "✓ $NAME@$VERSION is already on npm — nothing to publish."
+          else
+            echo "→ Publishing $NAME@$VERSION ..."
+            npm publish --access public
+            echo "✅ Published $NAME@$VERSION"
+          fi
+        env:
+          # setup-node wires this token into ~/.npmrc for `npm publish`.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
