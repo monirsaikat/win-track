@@ -1,6 +1,6 @@
 {
   "name": "win-track",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Get the active window and current browser tab URL in Node.js — native (N-API) for Windows, macOS & Linux. Ideal for time-tracking, productivity and activity-monitoring apps.",
   "license": "MIT",
   "author": "monirsaikat (https://github.com/monirsaikat)",

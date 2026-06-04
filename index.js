@@ -24,11 +24,22 @@ function loadBinding() {
   }
 }
 
+// A SIGTERM (execFile's default on timeout) is IGNORED by an osascript that is
+// blocked inside a synchronous Apple Event to a busy app (browser / System
+// Events), so timed-out children linger as zombies and pile up over a long
+// session — slowing every subsequent process spawn system-wide until the
+// per-second `ps`/`osascript` spawn stalls the main thread into a beachball.
+// SIGKILL is uncatchable and actually reaps them.
+const SPAWN_KILL_SIGNAL = "SIGKILL";
+const SPAWN_MAX_BUFFER = 1024 * 1024;
+
 function runCommandSync(command, args, options = {}) {
   try {
     return childProcess.execFileSync(command, args, {
       encoding: "utf8",
       timeout: 1500,
+      killSignal: SPAWN_KILL_SIGNAL,
+      maxBuffer: SPAWN_MAX_BUFFER,
       windowsHide: true,
       ...options
     }).trim();
@@ -43,7 +54,14 @@ function runCommandAsync(command, args, options = {}) {
     childProcess.execFile(
       command,
       args,
-      { encoding: "utf8", timeout: 1500, windowsHide: true, ...options },
+      {
+        encoding: "utf8",
+        timeout: 1500,
+        killSignal: SPAWN_KILL_SIGNAL,
+        maxBuffer: SPAWN_MAX_BUFFER,
+        windowsHide: true,
+        ...options
+      },
       (err, stdout) => {
         if (err) {
           lastError = err;
@@ -103,6 +121,15 @@ const MAC_FIREFOX_AX_SCRIPT = [
   'return ""'
 ].join("\n");
 
+// The Firefox URL fallback synthesizes Cmd+L / Cmd+C into the focused window and
+// save/restores the global CLIPBOARD on every poll — invasive and blocking (two
+// AppleScript `delay 0.08`s + keystroke Apple Events that wedge on a busy System
+// Events daemon, ~1/sec while Firefox is frontmost). Off by default; the AX path
+// and the browser extension cover Firefox URL capture without hijacking the
+// user's input/clipboard. Set WIN_TRACK_MAC_FIREFOX_CLIPBOARD=1 to re-enable.
+const MAC_FIREFOX_CLIPBOARD_FALLBACK =
+  process.env.WIN_TRACK_MAC_FIREFOX_CLIPBOARD === "1";
+
 const MAC_FIREFOX_CLIPBOARD_SCRIPT = [
   'tell application "System Events"',
   'if not (exists process "Firefox") then return ""',
@@ -154,6 +181,9 @@ function readMacBrowserUrlSync(appName) {
     if (url) {
       return url;
     }
+    if (!MAC_FIREFOX_CLIPBOARD_FALLBACK) {
+      return undefined;
+    }
     url = normalizeMacUrl(
       runCommandSync("osascript", ["-e", MAC_FIREFOX_CLIPBOARD_SCRIPT])
     );
@@ -175,6 +205,9 @@ async function readMacBrowserUrlAsync(appName) {
     );
     if (url) {
       return url;
+    }
+    if (!MAC_FIREFOX_CLIPBOARD_FALLBACK) {
+      return undefined;
     }
     url = normalizeMacUrl(
       await runCommandAsync("osascript", ["-e", MAC_FIREFOX_CLIPBOARD_SCRIPT])
@@ -368,6 +401,35 @@ function readMacProcessPath(processId) {
   return parts[0] || undefined;
 }
 
+// Cache pid -> executable path. The frontmost app's pid rarely changes between
+// 1-second polls, so without this we spawned a `ps` on EVERY tick — and on the
+// "async" active-window path that spawn was the synchronous `readMacProcessPath`
+// above (execFileSync), stalling the Electron main-process event loop every
+// second. The async + cached version below spawns `ps` at most once per distinct
+// pid, off the event loop.
+const macProcessPathCache = new Map();
+const MAC_PROCESS_PATH_CACHE_MAX = 256;
+
+async function readMacProcessPathAsync(processId) {
+  if (!processId) {
+    return undefined;
+  }
+  const key = String(processId);
+  if (macProcessPathCache.has(key)) {
+    return macProcessPathCache.get(key);
+  }
+  const output = await runCommandAsync("ps", ["-p", key, "-o", "command="]);
+  const resolvedPath = output ? output.split(" ")[0] || undefined : undefined;
+  if (resolvedPath) {
+    macProcessPathCache.set(key, resolvedPath);
+    if (macProcessPathCache.size > MAC_PROCESS_PATH_CACHE_MAX) {
+      const oldest = macProcessPathCache.keys().next().value;
+      macProcessPathCache.delete(oldest);
+    }
+  }
+  return resolvedPath;
+}
+
 function readMacActiveWindowSync() {
   const script = [
     'tell application "System Events"',
@@ -423,7 +485,7 @@ async function readMacActiveWindowAsync() {
   ].join("\n");
   const output = await runCommandAsync("osascript", ["-e", script]);
   const parsed = parseMacLines(output);
-  const path = readMacProcessPath(parsed.processId);
+  const path = await readMacProcessPathAsync(parsed.processId);
   const url = await readMacBrowserUrlAsync(parsed.appName);
   return normalizeInfo({
     appName: parsed.appName,
